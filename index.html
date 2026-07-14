@@ -433,6 +433,8 @@ async function loadData(force=false){
       const imprV  = parseInt(r["Impressions"]||0)||0;
       const lvV    = parseInt(r["Action Landing Page View"]||0)||0;
       const ckV    = parseInt(r["Action Omni Initiated Checkout"]||0)||0;
+      const v3sV   = parseInt(r["Action Video View"]||0)||0;
+      const v15sV  = parseInt(r["Video 15 Sec Watched Actions"]||0)||0;
       mD[d].spend+=spendV; mD[d].clicks+=clicksV; mD[d].impressions+=imprV;
       mD[d].landingViews+=lvV; mD[d].checkouts+=ckV;
 
@@ -444,11 +446,13 @@ async function loadData(force=false){
       const igUrl     = r["Instagram Permalink URL"]||"";
       const advCode   = extractAdvCode(adName);
       if(advCode){
-        if(!mByAdv[advCode]) mByAdv[advCode]={advCode,adName,campName,adStatus:"",campStatus:"",adsetStatus:"",lastStatusDate:"",igUrl:"",spend:0,clicks:0,impressions:0,checkouts:0,byDate:{}};
+        if(!mByAdv[advCode]) mByAdv[advCode]={advCode,adName,campName,adStatus:"",campStatus:"",adsetStatus:"",lastStatusDate:"",igUrl:"",spend:0,clicks:0,impressions:0,checkouts:0,video3s:0,video15s:0,byDate:{}};
         const a=mByAdv[advCode];
         a.spend+=spendV; a.clicks+=clicksV; a.impressions+=imprV; a.checkouts+=ckV;
-        if(!a.byDate[d]) a.byDate[d]={spend:0,clicks:0,impressions:0,checkouts:0};
+        a.video3s+=v3sV; a.video15s+=v15sV;
+        if(!a.byDate[d]) a.byDate[d]={spend:0,clicks:0,impressions:0,checkouts:0,video3s:0,video15s:0};
         a.byDate[d].spend+=spendV; a.byDate[d].clicks+=clicksV; a.byDate[d].impressions+=imprV; a.byDate[d].checkouts+=ckV;
+        a.byDate[d].video3s+=v3sV; a.byDate[d].video15s+=v15sV;
         if(!a.lastStatusDate||d>=a.lastStatusDate){
           a.adStatus=adStatusR; a.campStatus=campStatusR; a.adsetStatus=adsetStatusR; a.lastStatusDate=d;
         }
@@ -492,7 +496,7 @@ async function loadData(force=false){
       if(!productName && produto) productName=produto;
 
       const info=parseSCK(raw["SCK"]||"");
-      comprasPrincipal.push({date:d,email,valor,canal:info.paid?"trafego":"organico"});
+      comprasPrincipal.push({date:d,email,valor,canal:info.paid?"trafego":"organico",advCode:info.paid?(info.advCode||null):null});
 
       if(info.paid){
         if(!vD[d]) vD[d]={qtd:0,valor:0};
@@ -1255,9 +1259,9 @@ function renderAnuncios(){
   // ── 1. Linhas de anúncio (por advCode), sem filtro de campanha ainda ─────
   const adRowsAll=[];
   for(const [advCode,adData] of Object.entries(dd.metaByAdv)){
-    let spend=0,clicks=0,impressions=0,checkouts=0;
+    let spend=0,clicks=0,impressions=0,checkouts=0,video3s=0,video15s=0;
     for(const [d,v] of Object.entries(adData.byDate)){
-      if(d>=start&&d<=end){ spend+=v.spend; clicks+=v.clicks; impressions+=v.impressions; checkouts+=v.checkouts; }
+      if(d>=start&&d<=end){ spend+=v.spend; clicks+=v.clicks; impressions+=v.impressions; checkouts+=v.checkouts; video3s+=v.video3s||0; video15s+=v.video15s||0; }
     }
     let qtd=0, valor=0;
     const byD=dd.vendasByAdvDate[advCode]||{};
@@ -1267,13 +1271,28 @@ function renderAnuncios(){
     if(spend===0&&clicks===0&&impressions===0&&qtd===0) continue;
     const isActive=[adData.adStatus,adData.campStatus,adData.adsetStatus].some(s=>s==="ACTIVE");
     const hasStatusData=!!(adData.adStatus||adData.campStatus||adData.adsetStatus);
+
+    // Ticket Médio Ascensões: entre os compradores deste anúncio (no período), quantos
+    // também compraram o upsell (qualquer data) e qual o ticket médio dessas compras
+    const buyerEmails=new Set((dd.comprasPrincipal||[])
+      .filter(r=>r.advCode===advCode && r.date>=start && r.date<=end && r.email)
+      .map(r=>r.email));
+    let ascQtd=0, ascValor=0;
+    if(buyerEmails.size){
+      for(const u of (dd.comprasUpsell||[])){
+        if(u.email && buyerEmails.has(u.email)){ ascQtd++; ascValor+=u.valor; }
+      }
+    }
+
     adRowsAll.push({
       advCode, adName:adData.adName, campName:adData.campName||"—", igUrl:adData.igUrl||"",
       adStatus:adData.adStatus, campStatus:adData.campStatus, isActive, hasStatusData,
-      spend,clicks,impressions,checkouts,qtd,valor,
+      spend,clicks,impressions,checkouts,qtd,valor,video3s,video15s,
       cpc:clicks>0?spend/clicks:0, ctr:impressions>0?(clicks/impressions)*100:0,
-      cpm:impressions>0?(spend/impressions)*1000:0,
+      cpm:impressions>0?(spend/impressions)*1000:0, cpic:checkouts>0?spend/checkouts:0,
+      hookRate:impressions>0?(video3s/impressions)*100:0, holdRate:video3s>0?(video15s/video3s)*100:0,
       cpv:qtd>0?spend/qtd:0, ticket:qtd>0?valor/qtd:0, roas:spend>0?valor/spend:0,
+      ticketAsc:ascQtd>0?ascValor/ascQtd:0,
     });
   }
 
@@ -1475,19 +1494,19 @@ function renderAnuncios(){
       <thead><tr>
         <th style="width:20px"></th>
         ${thC("adName","Anúncio","ad","tleft")}
-        ${thC("campName","Campanha","ad","tleft")}
         <th class="tleft">Status</th>
         ${thC("spend","Investimento","ad")}
-        ${thC("clicks","Cliques","ad")}
-        ${thC("impressions","Impressões","ad")}
-        ${thC("ctr","CTR","ad")}
-        ${thC("cpc","CPC","ad")}
-        ${thC("cpm","CPM","ad")}
-        ${thC("checkouts","Checkouts","ad")}
         ${thC("qtd","Vendas","ad")}
-        ${thC("valor","Faturamento","ad")}
-        ${thC("cpv","CPV","ad")}
+        ${thC("cpv","Custo/Venda","ad")}
+        ${thC("ticket","Ticket Médio Front","ad")}
+        ${thC("ticketAsc","Ticket Médio Ascensões","ad")}
         ${thC("roas","ROAS","ad")}
+        ${thC("cpic","Custo/IC","ad")}
+        ${thC("ctr","CTR","ad")}
+        ${thC("cpm","CPM","ad")}
+        ${thC("cpc","CPC","ad")}
+        ${thC("hookRate","Hook Rate","ad")}
+        ${thC("holdRate","Hold Rate","ad")}
         <th></th>
       </tr></thead>
       <tbody>
@@ -1501,19 +1520,19 @@ function renderAnuncios(){
           return `<tr data-ad="${safeAd}" style="background:${bg};${bord};cursor:pointer" onclick="toggleAd(this.dataset.ad,event.shiftKey)">
             <td style="text-align:center">${checkbox(sel,"#10b981")}</td>
             <td class="tleft"><span style="background:var(--surf);border:1px solid var(--border-h);border-radius:6px;padding:2px 9px;font-size:10px;font-weight:600;color:var(--text);font-family:'JetBrains Mono',monospace" title="${r.adName}">${r.adName||r.advCode}</span></td>
-            <td class="tleft" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.campName}">${r.campName}</td>
             <td class="tleft">${statusDotFor(r.isActive,r.hasStatusData)}</td>
             <td>${fBRL(r.spend)}</td>
-            <td>${r.clicks}</td>
-            <td>${r.impressions}</td>
-            <td style="color:${sc(r.ctr,METAS_T.ctr.val,true)};font-weight:600">${fPct(r.ctr)}</td>
-            <td style="color:${sc(r.cpc,METAS_T.cpc.val,false)};font-weight:600">${fBRL(r.cpc)}</td>
-            <td style="color:${sc(r.cpm,METAS_T.cpm.val,false)};font-weight:600">${fBRL(r.cpm)}</td>
-            <td>${r.checkouts}</td>
             <td style="color:var(--text-strong);font-weight:600">${r.qtd}</td>
-            <td>${fBRL(r.valor)}</td>
             <td style="color:${r.qtd>0?sc(r.cpv,META_CPV,false):"var(--hint)"};font-weight:600">${r.qtd>0?fBRL(r.cpv):"—"}</td>
+            <td style="color:${r.qtd>0?sc(r.ticket,META_TICKET,true):"var(--hint)"};font-weight:600">${r.qtd>0?fBRL(r.ticket):"—"}</td>
+            <td>${r.ticketAsc>0?fBRL(r.ticketAsc):"—"}</td>
             <td style="color:${roasColor};font-weight:600">${r.roas>0?r.roas.toFixed(2)+"x":"—"}</td>
+            <td>${r.checkouts>0?fBRL(r.cpic):"—"}</td>
+            <td style="color:${sc(r.ctr,METAS_T.ctr.val,true)};font-weight:600">${fPct(r.ctr)}</td>
+            <td style="color:${sc(r.cpm,METAS_T.cpm.val,false)};font-weight:600">${fBRL(r.cpm)}</td>
+            <td style="color:${sc(r.cpc,METAS_T.cpc.val,false)};font-weight:600">${fBRL(r.cpc)}</td>
+            <td>${r.hookRate>0?r.hookRate.toFixed(1)+"%":"—"}</td>
+            <td>${r.holdRate>0?r.holdRate.toFixed(1)+"%":"—"}</td>
             <td style="text-align:center" onclick="event.stopPropagation()">${r.igUrl?`<a href="${r.igUrl}" target="_blank" style="display:inline-flex;align-items:center;gap:3px;background:var(--surf);border:1px solid var(--border-h);color:var(--muted);padding:4px 9px;border-radius:7px;font-size:10px;text-decoration:none;white-space:nowrap">Ver ↗</a>`:"—"}</td>
           </tr>`;
         }).join("")}
@@ -1523,12 +1542,6 @@ function renderAnuncios(){
 
     ${resumoAdsPanel()}
 
-    <div class="section-lbl">Vendas de tráfego sem anúncio identificado</div>
-    <div class="kc" style="max-width:420px">
-      <div class="kc-lbl">SCK indica anúncio pago, mas sem Ad ID reconhecível</div>
-      <div class="kc-val" style="font-size:18px">${semAdvQtd} vendas · ${fBRL(semAdvValor)}</div>
-      <div class="kc-sub">Não inclui vendas orgânicas (essas ficam nas abas Principal/Funil)</div>
-    </div>
     <p class="foot">Base Meta + Base compradores · Google Sheets</p>`;
 
   if(_focusedId==="camp-search-input"||_focusedId==="ad-search-input"){
