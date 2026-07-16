@@ -293,11 +293,14 @@ function parseBRL(s){
   if(str.includes(",")) str=str.replace(/\./g,"").replace(",",".");
   return parseFloat(str)||0;
 }
-// Classifica a linha de compra: produto principal vs upsell/order bump (ex: "Gravação")
-function classifyProduct(produto){
-  const p=(produto||"").toLowerCase();
-  if(p.includes("gravação")||p.includes("gravacao")) return "upsell";
-  return "principal";
+// Classifica a linha de compra pelo VALOR pago (não pelo nome do produto),
+// já que o nome pode variar mês a mês mas o preço do produto principal é fixo.
+// Produto principal: R$ 37 ou R$ 47 (com tolerância p/ variações de taxa, ex: 36,99 / 47,02).
+// Qualquer outro valor (97, 19, 7, 20, etc.) é tratado como upsell/order bump.
+function classifyProduct(valor){
+  const v=Number(valor)||0;
+  const isPrincipal=(v>=36 && v<=38) || (v>=46 && v<=48);
+  return isPrincipal ? "principal" : "upsell";
 }
 function toISO(s){ if(!s||s==="Date"||s==="")return null;s=String(s).trim().split(" ")[0]; if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;const p=s.split("/");if(p.length===3){const y=p[2].length===4?p[2]:"20"+p[2];return `${y}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`;}return null; }
 function fBRL(n){ n=n||0; const neg=n<0; const s=Math.abs(n).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2}); return (neg?"-":"")+"R$ "+s; }
@@ -482,7 +485,7 @@ async function loadData(force=false){
       const d=toISO(raw["Data da compra"]); if(!d) continue;
       const valor=parseBRL(raw["Valor"]);
       const produto=raw["Produto"]||"";
-      const classe=classifyProduct(produto);
+      const classe=classifyProduct(valor);
       const email=(raw["Email"]||"").toLowerCase().trim();
       if(d>lastISO) lastISO=d;
 
