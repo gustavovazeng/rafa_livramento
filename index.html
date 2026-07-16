@@ -251,12 +251,12 @@ const TAXA_IMPOSTO = 1.0;
 // ── State ───────────────────────────────────────────────────────────────
 const S = {
   meta:{},            // date -> {spend,clicks,impressions,landingViews,checkouts}
-  metaByAdv:{},        // advCode -> {advCode,adName,campName,adStatus,campStatus,adsetStatus,spend,clicks,impressions,checkouts,byDate:{}}
+  metaByAdv:{},        // Ad ID (chave="advCode", mas é o Ad ID real do Meta) -> {advCode,adName,campName,adStatus,campStatus,adsetStatus,spend,clicks,impressions,checkouts,byDate:{}}
   metaByPlatform:{},   // "Instagram (Ads)"/"Facebook (Ads)" -> {spend,clicks,impressions}
   vendas:{},           // date -> {qtd,valor}  (produto principal, SOMENTE tráfego pago)
   vendasOrganico:{},   // date -> {qtd,valor}  (produto principal, SOMENTE orgânico/direto)
-  vendasByAdv:{},      // advCode -> {qtd,valor}  (tráfego pago atribuído)
-  vendasByAdvDate:{},  // advCode -> date -> {qtd,valor}
+  vendasByAdv:{},      // Ad ID -> {qtd,valor}  (tráfego pago atribuído)
+  vendasByAdvDate:{},  // Ad ID -> date -> {qtd,valor}
   vendasByPlatform:{}, // label -> {qtd,valor}
   vendasByFormat:{},   // label -> {qtd,valor,platform}
   upsell:{},           // date -> {qtd,valor}  (ex: Gravação — order bump/upsell)
@@ -325,12 +325,24 @@ function statusBorder(val,meta,higherIsBetter){
   return "var(--border)";
 }
 
-// ── Extração de código do anúncio (adv001, adv002, ...) ─────────────────────
+// ── Extração de código/ID do anúncio ─────────────────────────────────────────
+// extractAdvCode: rótulo legível tipo "adv010" (só para exibição/busca — não é
+// mais usado como chave de atribuição porque o MESMO nome pode ser reaproveitado
+// em dois anúncios/campanhas diferentes, ex: "adv010" clonado em duas campanhas).
 function extractAdvCode(name){
   if(!name) return null;
   const clean=name.replace(/^teste-/i,"");
   const m=clean.match(/ad[vic]\d+/i);
   return m ? m[0].toLowerCase() : null;
+}
+// extractAdId: extrai o Ad ID numérico real do Meta, embutido no SCK como
+// "...NomeDoAnuncio_id_<numero>...". Esse número é único por anúncio (mesmo
+// que o nome se repita entre campanhas), e bate exatamente com a coluna
+// "Ad ID" da Base meta — por isso é usado como chave de atribuição.
+function extractAdId(seg){
+  if(!seg) return null;
+  const m=String(seg).match(/_id_(\d+)/);
+  return m ? m[1] : null;
 }
 
 // ── Parser do campo SCK (rastreio de origem da venda) ────────────────────────
@@ -343,8 +355,9 @@ function parseSCK(sck){
     const parts=sck.split("|");
     const adSeg=parts[3]||"";
     const advCode=extractAdvCode(adSeg);
+    const adId=extractAdId(adSeg);
     const placement=(parts[0]||"").replace(/^FBAds_/i,"");
-    return {paid:true, advCode, placement};
+    return {paid:true, advCode, adId, placement};
   }
   const parts=sck.split("|");
   return {paid:false, channel:(parts[0]||"").toLowerCase(), medium:(parts[1]||"").toLowerCase()};
@@ -447,7 +460,11 @@ async function loadData(force=false){
       const campStatusR = r["Campaign Status"]||"";
       const adsetStatusR= r["Adset Status"]||"";
       const igUrl     = r["Instagram Permalink URL"]||"";
-      const advCode   = extractAdvCode(adName);
+      // Chave = Ad ID real do Meta (coluna "Ad ID"), não o nome do anúncio:
+      // o mesmo nome (ex.: "adv010") pode ser reaproveitado em anúncios/campanhas
+      // diferentes, o que juntaria investimento de campanhas distintas se
+      // agrupássemos por nome.
+      const advCode   = (r["Ad ID"]||"").trim();
       if(advCode){
         if(!mByAdv[advCode]) mByAdv[advCode]={advCode,adName,campName,adStatus:"",campStatus:"",adsetStatus:"",lastStatusDate:"",igUrl:"",spend:0,clicks:0,impressions:0,checkouts:0,video3s:0,video15s:0,byDate:{}};
         const a=mByAdv[advCode];
@@ -499,17 +516,19 @@ async function loadData(force=false){
       if(!productName && produto) productName=produto;
 
       const info=parseSCK(raw["SCK"]||"");
-      comprasPrincipal.push({date:d,email,valor,canal:info.paid?"trafego":"organico",advCode:info.paid?(info.advCode||null):null});
+      // Atribuição por Ad ID real (info.adId), não pelo texto do nome do anúncio —
+      // ver extractAdId(). O campo "advCode" do registro guarda esse Ad ID.
+      comprasPrincipal.push({date:d,email,valor,canal:info.paid?"trafego":"organico",advCode:info.paid?(info.adId||null):null});
 
       if(info.paid){
         if(!vD[d]) vD[d]={qtd:0,valor:0};
         vD[d].qtd+=1; vD[d].valor+=valor;
-        if(info.advCode){
-          if(!vByAdv[info.advCode]) vByAdv[info.advCode]={qtd:0,valor:0};
-          vByAdv[info.advCode].qtd+=1; vByAdv[info.advCode].valor+=valor;
-          if(!vByAdvDate[info.advCode]) vByAdvDate[info.advCode]={};
-          if(!vByAdvDate[info.advCode][d]) vByAdvDate[info.advCode][d]={qtd:0,valor:0};
-          vByAdvDate[info.advCode][d].qtd+=1; vByAdvDate[info.advCode][d].valor+=valor;
+        if(info.adId){
+          if(!vByAdv[info.adId]) vByAdv[info.adId]={qtd:0,valor:0};
+          vByAdv[info.adId].qtd+=1; vByAdv[info.adId].valor+=valor;
+          if(!vByAdvDate[info.adId]) vByAdvDate[info.adId]={};
+          if(!vByAdvDate[info.adId][d]) vByAdvDate[info.adId][d]={qtd:0,valor:0};
+          vByAdvDate[info.adId][d].qtd+=1; vByAdvDate[info.adId][d].valor+=valor;
         }
         const platLabel=platformFromPlacement(info.placement);
         if(!vByPlatform[platLabel]) vByPlatform[platLabel]={qtd:0,valor:0};
