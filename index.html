@@ -1314,7 +1314,7 @@ function renderAnuncios(){
       cpm:impressions>0?(spend/impressions)*1000:0, cpic:checkouts>0?spend/checkouts:0,
       hookRate:impressions>0?(video3s/impressions)*100:0, holdRate:video3s>0?(video15s/video3s)*100:0,
       cpv:qtd>0?spend/qtd:0, ticket:qtd>0?valor/qtd:0, roas:spend>0?valor/spend:0,
-      ticketAsc:ascQtd>0?ascValor/ascQtd:0,
+      ascQtd, ascValor, ticketAsc:ascQtd>0?ascValor/ascQtd:0,
     });
   }
 
@@ -1354,8 +1354,47 @@ function renderAnuncios(){
   }
   const adRowsScope=hasFilter?adRowsAll.filter(r=>allowedAdCodes.has(r.advCode)):adRowsAll;
 
+  // ── 3b. Agrupa por NOME do anúncio dentro do escopo atual ────────────────
+  // O mesmo anúncio (mesmo nome) pode existir com Ad IDs diferentes em
+  // campanhas diferentes (clones). Sem filtro de campanha, consolidamos
+  // tudo num único card (mesmo anúncio, resultado somado). Com campanha(s)
+  // selecionada(s), o escopo já vem restrito aos Ad IDs daquela(s)
+  // campanha(s) — então o agrupamento por nome, dentro desse escopo, mostra
+  // só o que esse anúncio fez ali.
+  const groupMap={};
+  for(const r of adRowsScope){
+    const key=r.adName||r.advCode;
+    if(!groupMap[key]) groupMap[key]={
+      advCode:key, adName:r.adName, campNames:new Set(), igUrl:"",
+      adCodes:[], adStatus:"", campStatus:"", anyActive:false, hasStatusData:false,
+      spend:0,clicks:0,impressions:0,checkouts:0,qtd:0,valor:0,video3s:0,video15s:0,
+      ascQtd:0, ascValor:0,
+    };
+    const g=groupMap[key];
+    g.spend+=r.spend; g.clicks+=r.clicks; g.impressions+=r.impressions; g.checkouts+=r.checkouts;
+    g.qtd+=r.qtd; g.valor+=r.valor; g.video3s+=r.video3s; g.video15s+=r.video15s;
+    g.ascQtd+=r.ascQtd; g.ascValor+=r.ascValor;
+    g.adCodes.push(r.advCode);
+    g.campNames.add(r.campName);
+    if(r.igUrl && !g.igUrl) g.igUrl=r.igUrl;
+    if(r.isActive) g.anyActive=true;
+    if(r.hasStatusData) g.hasStatusData=true;
+    if(!g.adStatus && r.adStatus) g.adStatus=r.adStatus;
+    if(!g.campStatus && r.campStatus) g.campStatus=r.campStatus;
+  }
+  const adRowsGrouped=Object.values(groupMap).map(g=>({
+    ...g,
+    campName:[...g.campNames].filter(c=>c&&c!=="—").join(", ")||"—",
+    isActive:g.anyActive,
+    cpc:g.clicks>0?g.spend/g.clicks:0, ctr:g.impressions>0?(g.clicks/g.impressions)*100:0,
+    cpm:g.impressions>0?(g.spend/g.impressions)*1000:0, cpic:g.checkouts>0?g.spend/g.checkouts:0,
+    hookRate:g.impressions>0?(g.video3s/g.impressions)*100:0, holdRate:g.video3s>0?(g.video15s/g.video3s)*100:0,
+    cpv:g.qtd>0?g.spend/g.qtd:0, ticket:g.qtd>0?g.valor/g.qtd:0, roas:g.spend>0?g.valor/g.spend:0,
+    ticketAsc:g.ascQtd>0?g.ascValor/g.ascQtd:0,
+  }));
+
   const {col,dir}=S.aSort;
-  const sortedAdsAll=[...adRowsScope].sort((a,b)=>{
+  const sortedAdsAll=[...adRowsGrouped].sort((a,b)=>{
     const av=a[col]??0,bv=b[col]??0;
     if(typeof av==="string") return dir==="asc"?av.localeCompare(bv):bv.localeCompare(av);
     return dir==="asc"?av-bv:bv-av;
@@ -1408,7 +1447,7 @@ function renderAnuncios(){
   function resumoAdsPanel(){
     if(!S.selectedAds.size) return "";
     const fDM=iso=>{if(!iso)return"";const[,m,d]=iso.split("-");return d+"/"+m;};
-    const selRows=[...adRowsAll].filter(r=>S.selectedAds.has(r.advCode)).sort((a,b)=>b.qtd-a.qtd);
+    const selRows=[...adRowsGrouped].filter(r=>S.selectedAds.has(r.advCode)).sort((a,b)=>b.qtd-a.qtd);
     const hdr=`*Melhores ads - Rafa Livramento - ${S.productName}*\n_${fDM(start)} a ${fDM(end)}_`;
     const blocks=selRows.map(r=>{
       const lines=["Nome do ad  ⤵️",r.adName||r.advCode];
