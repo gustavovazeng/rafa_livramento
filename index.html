@@ -6723,7 +6723,8 @@ function parseNum(s){
 // ── Moeda: o och_nov26 inteiro fala REAL (R$) ─────────────────────────────
 // A conta de anúncios é em BRL, então não há conversão. Sobre o gasto da Meta
 // incide o imposto de 12,15% (mesma regra dos outros projetos do index.html):
-// o investimento lido da Base Meta é multiplicado por (1 + IMPOSTO_META), e
+// o imposto é calculado "por dentro": o valor do gerenciador é DIVIDIDO por
+// (1 − IMPOSTO_META) = 0,8785 (e não multiplicado por 1,1215), e
 // Investimento, CPL, CPC e CPM já saem com o imposto. Para tirar, use 0.
 // (As funções mantêm o nome "USD" herdado do modelo, mas devolvem R$.)
 const IMPOSTO_META = 0.1215;
@@ -6732,7 +6733,7 @@ function accountNameOf(r){
   return (r["Account Name"]||r["Account name"]||r["Nome da conta"]||"").trim();
 }
 function metaSpendToUSD(rawSpend, accountName){
-  return (rawSpend||0)*(1+IMPOSTO_META);
+  return (rawSpend||0)/(1-IMPOSTO_META); // ex.: R$ 724,90 ÷ 0,8785 = R$ 825,16
 }
 // Gasto de uma linha da Base Meta, em R$ e já com imposto.
 function spendUSD(r, campo="Spend (Cost, Amount Spent)"){
