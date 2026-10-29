@@ -6380,7 +6380,24 @@ const FUNIS = {
     grupoVipMetas:null,
     // Planejamento de investimento: ainda não definido. Cada item é
     // {date:"AAAA-MM-DD", investimento:<R$>, leads:<n>} (leads só na Captação).
-    planoDiario:[],
+    // Captação 29/10 → 10/11 (13 dias), R$ 17.999 no total — valores
+    // passados pelo Gustavo em 29/10. "leads" = investimento do dia ÷ meta de
+    // CPL (R$ 8), arredondado.
+    planoDiario:[
+      {date:"2026-10-29", investimento:800.00, leads:100},
+      {date:"2026-10-30", investimento:880.00, leads:110},
+      {date:"2026-10-31", investimento:968.00, leads:121},
+      {date:"2026-11-01", investimento:1065.00, leads:133},
+      {date:"2026-11-02", investimento:1171.00, leads:146},
+      {date:"2026-11-03", investimento:1288.00, leads:161},
+      {date:"2026-11-04", investimento:1417.00, leads:177},
+      {date:"2026-11-05", investimento:1559.00, leads:195},
+      {date:"2026-11-06", investimento:1715.00, leads:214},
+      {date:"2026-11-07", investimento:1886.00, leads:236},
+      {date:"2026-11-08", investimento:2075.00, leads:259},
+      {date:"2026-11-09", investimento:2282.00, leads:285},
+      {date:"2026-11-10", investimento:893.00, leads:112},
+    ],
     planoAquecimento:[],
     planoAquecimentoTotal:0,
     planoLembrete:[],
@@ -6825,6 +6842,44 @@ function toISOLead(s){
   ms=Date.UTC(y,mo-1,da,hh,mi,ss);
   if(isNaN(ms))return null;
   return {ms,date:msToISO(ms)};
+}
+
+// ── Data/hora da lead no och_nov26 (fuso de Brasília) ──────────────────────
+// O "created_at" da Base Leads OCH é gravado em UTC (fuso 0), ex.:
+// "2026-10-29T20:38:27.061239+00:00". A conta de anúncios e o dashboard
+// trabalham no horário de Brasília (UTC-3), então toda lead é convertida
+// pra BRT antes de virar data — senão quem se cadastra entre 21h e 23h59
+// cai no dia seguinte. Dependendo de como o Google entrega a planilha, o
+// mesmo valor pode chegar sem o "+00:00" ("2026-10-29 20:38:27" ou
+// "29/10/2026 20:38:27"): como a origem é sempre UTC, esses formatos também
+// levam o -3h. Se o created_at vier vazio ou ilegível, vale a coluna
+// "Data do cadastro" (que já vem no dia de Brasília).
+// Devolve {ms,date}: ms já no "relógio de Brasília" (mesma convenção das
+// outras datas do dashboard) e date em AAAA-MM-DD.
+const LEAD_TZ_OFFSET_H = -3;
+function dataLeadBR(r){
+  const raw=String(leadCol(r,"criadoEm")||"").trim();
+  let utcMs=null;
+  if(raw){
+    if(/[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw)&&/^\d{4}-\d{2}-\d{2}/.test(raw)){
+      const t=Date.parse(raw.replace(" ","T").replace(/(\.\d{3})\d+/,"$1"));
+      if(!isNaN(t))utcMs=t;
+    }else{
+      let m=raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+      if(m) utcMs=Date.UTC(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0));
+      else if((m=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/))){
+        const y=m[3].length===4?+m[3]:2000+(+m[3]);
+        utcMs=Date.UTC(y,+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0),+(m[6]||0));
+      }
+    }
+  }
+  if(utcMs!=null&&!isNaN(utcMs)){
+    const ms=utcMs+LEAD_TZ_OFFSET_H*3600*1000;
+    return {ms,date:msToISO(ms)};
+  }
+  const d=toISO(r["Data do cadastro"]);
+  if(d){ const [y,mo,da]=d.split("-").map(Number); return {ms:Date.UTC(y,mo-1,da,12),date:d}; }
+  return null;
 }
 
 // ── Status helpers ────────────────────────────────────────────────────────
@@ -7813,7 +7868,7 @@ async function loadData(){
     const nomesMeta=nomesDaBaseMeta(metaRows);
     let leadsDescartadas=0, leadsDataCorrigida=0;
     for(const r of leadsRowsRaw){
-      const parsed=toISOLead(leadCol(r,"criadoEm"));if(!parsed)continue;
+      const parsed=dataLeadBR(r);if(!parsed)continue;
       // ── Data da lead: a MAIS ANTIGA entre a Base leads e a Base pesquisa ──
       // Quando a mesma pessoa existe nas duas bases, vale a data mais antiga
       // das duas. A Base leads não é confiável como fonte de data: importação
@@ -9083,7 +9138,6 @@ function renderPrincipal(){
   // repetida) — só pra referência na observação do card "Leads captados",
   // que mostra o número já deduplicado (S.leadsRows) como valor principal.
   const leadsTotalRaw=leadsForTemp(leadsForChannel(leadsInRangeRaw(S.startDate,S.endDate),ch),temp).length;
-  const funil=funilMetrics(S.startDate,S.endDate,ch,temp);
   const ga4PageRows=getGA4PageRows(S.startDate,S.endDate);
   const ga4PageTotal=ga4PageRows.reduce((a,p)=>({sessions:a.sessions+p.sessions,cadastros:a.cadastros+p.cadastros}),{sessions:0,cadastros:0});
   const ga4PageTotalConv=ga4PageTotal.sessions>0?(ga4PageTotal.cadastros/ga4PageTotal.sessions)*100:null;
@@ -9217,18 +9271,6 @@ function renderPrincipal(){
       </div>
     </div>
     <div style="font-size:10px;color:var(--hint);margin:-2px 0 6px">Enquanto o GA4 não está configurado, dá pra digitar as sessões de cada página direto na coluna. O valor digitado fica em amarelo e manda na conversão da linha e no total; apagar o campo devolve o número do GA4. É só desta sessão do navegador — recarregou, zera.</div>
-
-    <div class="section-lbl">Funil de performance — ${chLabel}${temp!=="todos"?` · ${tempLabel}`:""}</div>
-    <div class="cc" style="margin-bottom:6px">
-      <div style="display:flex;align-items:flex-start;overflow-x:auto;padding:4px 2px 2px">
-        ${renderFunilHtml(funil)}
-      </div>
-      <div style="font-size:10px;color:var(--hint);margin-top:10px;line-height:1.6">
-        Mesmo período, canal e temperatura selecionados acima. Page views vêm do ${fontePaginaLabel()}; leads são os já deduplicados; vendas e faturamento saem da Base Vendas no período.
-        ${PESQUISA_ATIVA?`Os três indicadores sob o CPL são calculados só sobre quem respondeu a pesquisa (${funil.quizN.toLocaleString("pt-BR")} lead(s)):
-        <b>Desemp.+Est.</b> = desempregado ou estudante · <b>No sé nada</b> = "no sé nada, quiero empezar" · <b>Hasta 300$</b> = sem ingresos ou até MXN 5.600.`:""}
-      </div>
-    </div>
 
     ${daily.length===0?`<div class="err" style="margin-top:12px">Nenhum dado no período selecionado.</div>`:""}
     <div class="foot">och_nov26 · Captação · Google Sheets</div>`;
