@@ -253,10 +253,10 @@ input[type=date]::-webkit-calendar-picker-indicator{opacity:.4;cursor:pointer;fi
 const SHEET_ID  = "1u5zoV0lglcJsaU-OiuQVeeJ_XF1t7SDcaaeXD7fsST8";
 const GAPI_KEY  = "AIzaSyDFyD63YrWNWSX2gjZWdVD5Bq8uoazXzbE";
 // Imposto sobre o gasto da Meta (12,15%). O investimento lido da Base Meta
-// é multiplicado por (1 + IMPOSTO_META), então Investimento, CPV, ROAS, CPC,
+// é DIVIDIDO por (1 − IMPOSTO_META) = 0,8785, então Investimento, CPV, ROAS, CPC,
 // CPM, Custo/IC e Lucro já saem com o imposto. Para tirar, use 0.
 const IMPOSTO_META = 0.1215;
-const comImposto = v => (v||0)*(1+IMPOSTO_META);
+const comImposto = v => (v||0)/(1-IMPOSTO_META); // imposto "por dentro": gerenciador ÷ 0,8785
 const SHEET_COMPRADORES = ["Base Compradores OFC","Base compradores"];   // aceita o nome novo e o antigo
 const SHEET_META        = ["Base Meta OFC","Base meta"];
 
@@ -1773,7 +1773,7 @@ ${block("Hoje", hoje, false)}`;
         <span style="color:var(--muted);font-size:12px">Investimento</span>
         <input id="manual-spend-input"
           value="${isManual?String(S.manualSpendHoje.toFixed(2)).replace('.',','):''}"
-          placeholder="${fBRL(hojeBase.spend/(1+IMPOSTO_META))}"
+          placeholder="${fBRL(hojeBase.spend*(1-IMPOSTO_META))}"
           onblur="setManualSpendHoje(this.value||'0')"
           onkeydown="if(event.key==='Enter')this.blur()"
           style="background:${isManual?'rgba(251,191,36,.08)':'var(--surf)'};border:1px solid ${isManual?'rgba(251,191,36,.5)':'var(--border)'};border-radius:6px;color:${isManual?'#fbbf24':'var(--text-strong)'};font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px;outline:none;width:110px;text-align:right;transition:all .15s">
@@ -2234,10 +2234,10 @@ const SHEET_OB      = "Base Compradores SDA";   // order bump (O Segredo das Dor
 const FILTRO_CAMPANHA = "dicion_sintomas";
 
 // Imposto sobre o gasto da Meta (12,15%). O investimento lido da Base Meta
-// é multiplicado por (1 + IMPOSTO_META), então Investimento, CPV, ROAS, CPC,
+// é DIVIDIDO por (1 − IMPOSTO_META) = 0,8785, então Investimento, CPV, ROAS, CPC,
 // CPM, Custo/IC e Lucro já saem com o imposto. Para tirar, use 0.
 const IMPOSTO_META = 0.1215;
-const comImposto = v => (v||0)*(1+IMPOSTO_META);
+const comImposto = v => (v||0)/(1-IMPOSTO_META); // imposto "por dentro": gerenciador ÷ 0,8785
 
 
 // Nome do dashboard (usado nos títulos e nos resumos copiáveis)
@@ -5847,7 +5847,7 @@ ${block("Hoje", hoje, false)}`;
         <div style="display:flex;align-items:center;gap:6px">
           <input id="manual-spend-input"
             value="${isManual?String(S.manualSpendHoje.toFixed(2)).replace('.',','):''}"
-            placeholder="${fBRL(m.spend/(1+IMPOSTO_META))}"
+            placeholder="${fBRL(m.spend*(1-IMPOSTO_META))}"
             onblur="DDS.setManualSpendHoje(this.value||'0')"
             onkeydown="if(event.key==='Enter')this.blur()"
             style="background:${isManual?'rgba(251,191,36,.08)':'var(--surf)'};border:1px solid ${isManual?'rgba(251,191,36,.5)':'var(--border)'};border-radius:6px;color:${isManual?'#fbbf24':'var(--text-strong)'};font-family:'JetBrains Mono',monospace;font-size:12px;padding:3px 8px;outline:none;width:120px;transition:all .15s"
@@ -5885,14 +5885,14 @@ ${block("Hoje", hoje, false)}`;
   // Melhoria 3: variáveis para card de investimento (sem backtick aninhado)
   const _mSpend    = S.manualSpendHoje!==null;
   const _spendVal  = _mSpend ? String(S.manualSpendHoje.toFixed(2)).replace('.',',') : '';
-  const _spendPH   = fBRL(hojeBase.spend/(1+IMPOSTO_META));
+  const _spendPH   = fBRL(hojeBase.spend*(1-IMPOSTO_META));
   const _spendBg   = _mSpend ? 'rgba(251,191,36,.08)' : 'var(--surf)';
   const _spendBord = _mSpend ? 'rgba(251,191,36,.5)' : 'var(--border)';
   const _spendCol  = _mSpend ? '#fbbf24' : 'var(--text-strong)';
   const _spendExtra= _mSpend
     ? '<span style="font-size:10px;color:#fbbf24;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);padding:2px 8px;border-radius:5px">&#x270F;&#xFE0F; manual</span>'
       + ' <button onclick="DDS.clearManualSpend()" style="font-size:10px;padding:3px 9px;border-radius:6px;background:transparent;border:1px solid var(--border);color:var(--hint);cursor:pointer">&#x21A9; Restaurar</button>'
-    : '<span style="font-size:10px;color:var(--hint)">Digite o valor do Gerenciador (sem imposto) &middot; o painel soma 12,15% &middot; Enter para aplicar</span>';
+    : '<span style="font-size:10px;color:var(--hint)">Digite o valor do Gerenciador (sem imposto) &middot; o painel aplica o imposto de 12,15% (÷ 0,8785) &middot; Enter para aplicar</span>';
 
   el.innerHTML=`
     <div class="hdr" style="margin-bottom:16px">
