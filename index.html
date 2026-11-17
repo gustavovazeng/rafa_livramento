@@ -2271,19 +2271,25 @@ const ASC1 = ASC_ATIVAS[0], ASC2 = ASC_ATIVAS[1];
 const shortLbl = p => (p&&(p.short||(p.label||"").split(" ")[0]))||"";
 
 // ── Metas ────────────────────────────────────────────────────────────────
-// Ainda não definidas: com null os cards ficam neutros (sem 🟢🟡🔴) e os
-// gráficos sem linha de meta. Para ativar, preencha os valores.
+// Metas de tráfego e funil definidas pelo Gustavo em 17/11. CPV, ROAS e
+// ticket seguem sem meta (null = card neutro, sem 🟢🟡🔴 e sem linha de meta).
 const META_CPV=null, META_ROAS=null, META_TICKET=null;
-const META_TAKE_RATE_ASC1 = null;
+// Tx order bump = compradores do order bump ÷ compradores do Dicionário (%).
+// O order bump é a 1ª "ascensão" ativa (ASC1), então a mesma meta vale pro
+// gráfico de take rate da aba Funil.
+const META_TX_OB = 20;
+const META_TAKE_RATE_ASC1 = META_TX_OB;
 const TAXA_IMPOSTO=1.0;
 const METAS_T = {
-  cpc:      {val:null, higher:false},
-  ctr:      {val:null, higher:true},
-  cpm:      {val:null, higher:false},
-  txPagChk: {val:null, higher:true},
-  txChkVnd: {val:null, higher:true},
-  connect:  {val:null, higher:true},
+  cpc:      {val:1.74,  higher:false}, // R$ (com imposto) — menor é melhor
+  ctr:      {val:3.90,  higher:true},  // %
+  cpm:      {val:68.00, higher:false}, // R$ (com imposto) — menor é melhor
+  txPagChk: {val:10.00, higher:true},  // conversão da página de venda = checkouts ÷ page views
+  txChkVnd: {val:43.00, higher:true},  // conversão do checkout = vendas ÷ checkouts
+  connect:  {val:85.00, higher:true},  // page views ÷ cliques no link
 };
+// Formato das metas em % no padrão brasileiro (3,90% em vez de 3.9%).
+const fMetaPct = v => Number(v).toFixed(2).replace(".",",")+"%";
 
 // Chart colors — dark mode
 const CHART_COLOR = "#3b82f6";
@@ -3527,7 +3533,7 @@ function kpiCard(lbl,val,sub,color,small=false,meta=null,higherIsBetter=null){
 
 function statusLegend(){
   // Metas ainda não definidas: a legenda volta quando houver metas.
-  if(META_CPV===null&&META_ROAS===null) return "";
+  if(META_CPV===null&&META_ROAS===null&&Object.values(METAS_T).every(m=>m.val===null)) return "";
   return `<div class="status-legend">
     <span class="sl"><span class="sl-dot" style="background:#34d399"></span>Dentro da meta</span>
     <span class="sl"><span class="sl-dot" style="background:#fbbf24"></span>Até 10% fora</span>
@@ -4566,7 +4572,7 @@ function renderAnuncios(){
               <td style="padding:10px 12px;text-align:center"><div style="width:9px;height:9px;border-radius:50%;background:${r.campStatus===''?'var(--border-h)':r.campStatus==='ACTIVE'?'#22c55e':'#ef4444'};margin:0 auto" title="${r.campStatus||'Sem dados'}"></div></td>
               <td style="padding:10px 14px;text-align:right;font-family:'JetBrains Mono',monospace;color:var(--text)">${fBRL(r.spend)}</td>
               <td style="padding:10px 14px;text-align:right;font-family:'JetBrains Mono',monospace;color:var(--text)">${r.qtd}</td>
-              ${!isFeo&&ASC1?`<td style="padding:10px 14px;text-align:right;font-family:'JetBrains Mono',monospace;color:${r.trCero>0?"#f59e0b":"var(--hint)"}">${r.trCero>0?r.trCero.toFixed(1)+"%":"—"}</td>`:""}
+              ${!isFeo&&ASC1?`<td style="padding:10px 14px;text-align:right;font-family:'JetBrains Mono',monospace;color:${r.trCero>0?((ASC1&&ASC1.isOB&&META_TX_OB)?statusColor(r.trCero,META_TX_OB,true):"#f59e0b"):"var(--hint)"}">${r.trCero>0?r.trCero.toFixed(1)+"%":"—"}</td>`:""}
               ${!isFeo&&ASC2?`<td style="padding:10px 14px;text-align:right;font-family:'JetBrains Mono',monospace;color:${r.trMapa>0?"#34d399":"var(--hint)"}">${r.trMapa>0?r.trMapa.toFixed(1)+"%":"—"}</td>`:""}
               <td style="padding:10px 14px;text-align:right;font-family:'JetBrains Mono',monospace;color:${sc(r.cpv,isFeo?getCpvMetaFromCamp(r.campName):META_CPV,false)}">${r.qtd>0?fBRL(r.cpv):"—"}</td>
               <td style="padding:10px 14px;text-align:right;font-family:'JetBrains Mono',monospace;color:${r.qtd>0?sc(r.roas,isFeo?null:META_ROAS,true):"var(--hint)"}">${r.qtd>0?r.roas.toFixed(2)+"x":"—"}</td>
@@ -4688,7 +4694,7 @@ function renderAnuncios(){
             <td style="padding:10px 12px;text-align:center"><div style="width:9px;height:9px;border-radius:50%;background:${!r.hasStatusData?'var(--border-h)':r.isActive?'#22c55e':'#ef4444'};margin:0 auto" title="${!r.hasStatusData?'Sem dados':r.isActive?'Ativo':'Pausado'}"></div></td>
             <td style="padding:10px 14px;text-align:right;font-family:'JetBrains Mono',monospace;color:var(--text)">${fBRL(r.spend)}</td>
             <td style="padding:10px 14px;text-align:right;font-family:'JetBrains Mono',monospace;color:var(--text)">${r.qtd}</td>
-            ${!isFeo&&ASC1?`<td style="padding:10px 14px;text-align:right;font-family:'JetBrains Mono',monospace;color:${r.trCero>0?"#f59e0b":"var(--hint)"}">${r.trCero>0?r.trCero.toFixed(1)+"%":"—"}</td>`:""}
+            ${!isFeo&&ASC1?`<td style="padding:10px 14px;text-align:right;font-family:'JetBrains Mono',monospace;color:${r.trCero>0?((ASC1&&ASC1.isOB&&META_TX_OB)?statusColor(r.trCero,META_TX_OB,true):"#f59e0b"):"var(--hint)"}">${r.trCero>0?r.trCero.toFixed(1)+"%":"—"}</td>`:""}
             ${!isFeo&&ASC2?`<td style="padding:10px 14px;text-align:right;font-family:'JetBrains Mono',monospace;color:${r.trMapa>0?"#34d399":"var(--hint)"}">${r.trMapa>0?r.trMapa.toFixed(1)+"%":"—"}</td>`:""}
             <td style="padding:10px 14px;text-align:right;font-family:'JetBrains Mono',monospace;color:${sc(r.cpv,isFeo?getCpvMetaFromCamp(r.campName):META_CPV,false)};font-weight:600">${r.qtd>0?fBRL(r.cpv):"—"}</td>
             <td style="padding:10px 14px;text-align:right;font-family:'JetBrains Mono',monospace;color:${sc(r.ticket,isFeo?null:META_TICKET,true)};font-weight:600">${r.qtd>0?fBRL(r.ticket):"—"}</td>
@@ -5464,7 +5470,7 @@ function renderFunil(){
               ${nonPrimary.map((s,i)=>{
                 const n=d[s.id]||0;
                 const tr=n0>0?(n/n0*100):0;
-                const trC=tr>=30?"var(--green)":tr>=15?"var(--amber)":"var(--muted)";
+                const trC=(s.isOB&&META_TX_OB)?(tr>0?statusColor(tr,META_TX_OB,true):"var(--muted)"):(tr>=30?"var(--green)":tr>=15?"var(--amber)":"var(--muted)");
                 return `<td style="padding:8px 6px;text-align:center;color:${upsellColors[i%upsellColors.length]};font-weight:600;font-family:'JetBrains Mono',monospace">${n}</td><td style="padding:8px 6px;text-align:center;color:${trC};font-weight:600">${tr.toFixed(1)}%</td>`;
               }).join("")}
               <td style="padding:8px 10px;text-align:right;font-family:'JetBrains Mono',monospace;color:var(--text)">${fat>0?fBRL(fat):"—"}</td>
@@ -5496,7 +5502,7 @@ function renderFunil(){
             const tr2=n1>0?(n2/n1*100):0;
             const bw=Math.round((n0/maxPrimary)*72);
             const [y2,mo]=m.split("-");
-            const tr1C=tr1>=30?"var(--green)":tr1>=15?"var(--amber)":"var(--muted)";
+            const tr1C=(s1&&s1.isOB&&META_TX_OB)?(tr1>0?statusColor(tr1,META_TX_OB,true):"var(--muted)"):(tr1>=30?"var(--green)":tr1>=15?"var(--amber)":"var(--muted)");
             const tr2C=tr2>=30?"var(--green)":tr2>=15?"var(--amber)":"var(--muted)";
             const invest=mesSpend[m]||0;
             const cpv=n0>0?invest/n0:0;
@@ -5624,7 +5630,9 @@ function renderFunil(){
         ? steps.slice(1).map((s,i)=>{
             const cnt=counts[s.id]||0;
             const pct=cnt0>0?(cnt/cnt0)*100:0;
-            return `<div class="kc"><div class="kc-lbl">Take rate ${shortLbl(s)}</div><div class="kc-val kc-val-sm" style="color:${upsellColors[i%upsellColors.length]}">${pct.toFixed(1)}%</div><div class="kc-sub">${cnt} de ${cnt0} compraram</div></div>`;
+            const _obM=(s.isOB&&S.currentFunil!=="feo")?META_TX_OB:null;
+            const _obC=_obM?statusColor(pct,_obM,true):upsellColors[i%upsellColors.length];
+            return `<div class="kc" style="border-color:${_obM?statusBorder(pct,_obM,true):"var(--border)"}"><div class="kc-lbl">Take rate ${shortLbl(s)}</div><div class="kc-val kc-val-sm" style="color:${_obC}">${pct.toFixed(1)}%</div><div class="kc-sub">${cnt} de ${cnt0} compraram${_obM?` · Meta: ${fMetaPct(_obM)}`:""}</div></div>`;
           }).join("")
         : [
             s1?`<div class="kc"><div class="kc-lbl">Take rate ${shortLbl(s1)}</div><div class="kc-val kc-val-sm">${taxaAscensao.toFixed(1)}%</div><div class="kc-sub">${cnt1} de ${cnt0} compraram</div></div>`:"",
@@ -5776,11 +5784,13 @@ function renderResumo(){
     const vLabel=isTotal?"Vendas Mensal":"Vendas";
     const cpvLabel=isTotal?"Custo por venda Mensal":"Custo por venda";
     const cpvMeta=_bCpvM?` ${cpvE} ${fBRL(_bCpvM)}`:``;
-    const pcMeta=METAS_T.txPagChk.val?` ${pcE} ${METAS_T.txPagChk.val}%`:"";
-    const cvMeta=METAS_T.txChkVnd.val?` ${cvE} ${METAS_T.txChkVnd.val}%`:"";
-    const cnMeta=METAS_T.connect.val?` ${cnE} ${METAS_T.connect.val}%`:"";
+    const obE   =em(m.txOB,     isFeo?null:META_TX_OB,            true);
+    const obMeta=(!isFeo&&META_TX_OB)?` ${obE} ${fMetaPct(META_TX_OB)}`:"";
+    const pcMeta=METAS_T.txPagChk.val?` ${pcE} ${fMetaPct(METAS_T.txPagChk.val)}`:"";
+    const cvMeta=METAS_T.txChkVnd.val?` ${cvE} ${fMetaPct(METAS_T.txChkVnd.val)}`:"";
+    const cnMeta=METAS_T.connect.val?` ${cnE} ${fMetaPct(METAS_T.connect.val)}`:"";
     const cpcMeta=METAS_T.cpc.val?` ${cpcE} ${fBRL(METAS_T.cpc.val)}`:"";
-    const ctrMeta=METAS_T.ctr.val?` ${ctrE} ${METAS_T.ctr.val}%`:"";
+    const ctrMeta=METAS_T.ctr.val?` ${ctrE} ${fMetaPct(METAS_T.ctr.val)}`:"";
     const cpmMeta=METAS_T.cpm.val?` ${cpmE} ${fBRL(METAS_T.cpm.val)}`:"";
     return (
 `*-> ${label}*
@@ -5791,7 +5801,7 @@ ROAS front:\t${m.roas.toFixed(2)}\t
 
 Ticket médio:\t${fBRL(m.ticketFunil)}\t
 ROAS:\t${m.roasFunil.toFixed(2)}\t
-Tx order bump:\t${m.txOB.toFixed(1)}%\t
+Tx order bump:\t${m.txOB.toFixed(1)}%${obMeta}
 ${!isFeo?`
 % vendas quente:\t${m.pctQuente!=null?m.pctQuente+"%":"—"}\t
 % vendas frio:\t${m.pctFrio!=null?m.pctFrio+"%":"—"}\t`:""}
@@ -5838,6 +5848,7 @@ ${block("Hoje", hoje, false)}`;
     const cpcE  =em(m.cpc,      isFeo?null:METAS_T.cpc.val,       false);
     const ctrE  =em(m.ctr,      isFeo?null:METAS_T.ctr.val,       true);
     const cpmE  =em(m.cpm,      isFeo?null:METAS_T.cpm.val,       false);
+    const obE   =em(m.txOB,     isFeo?null:META_TX_OB,            true);
     const vLabel=isTotal?"Vendas (período)":"Vendas";
     const cpvLabel=isTotal?"Custo por venda":"Custo por venda";
     const isManual=isHoje&&S.manualSpendHoje!==null;
@@ -5867,17 +5878,17 @@ ${block("Hoje", hoje, false)}`;
       <div style="height:10px"></div>
       ${row("Ticket médio", fBRL(m.ticketFunil), "Dicionário + Order Bump", "")}
       ${row("ROAS", m.roasFunil.toFixed(2), "Dicionário + Order Bump", "")}
-      ${row("Tx order bump", m.txOB.toFixed(1)+"%", m.compradores>0?`${m.qtdOB} de ${m.compradores}`:"", "")}
+      ${row("Tx order bump", m.txOB.toFixed(1)+"%", [(!isFeo&&META_TX_OB)?`meta ${fMetaPct(META_TX_OB)}`:"", m.compradores>0?`${m.qtdOB} de ${m.compradores}`:""].filter(Boolean).join(" · "), obE)}
       <div style="height:10px"></div>
       ${!isFeo?row("% vendas quente", m.pctQuente!=null?m.pctQuente+"%":"—", "", ""):""}
       ${!isFeo?row("% vendas frio",   m.pctFrio  !=null?m.pctFrio+"%":"—",   "", ""):""}
       ${!isFeo?`<div style="height:10px"></div>`:""}
-      ${row("Tx conv PgV-Checkout", m.txPagChk.toFixed(1)+"%", METAS_T.txPagChk.val?`meta ${METAS_T.txPagChk.val}%`:"", pcE)}
-      ${row("Tx conv Checkout-Vendas", m.txChkVnd.toFixed(1)+"%", METAS_T.txChkVnd.val?`meta ${METAS_T.txChkVnd.val}%`:"", cvE)}
-      ${row("Connect Rate", m.connect.toFixed(2)+"%", METAS_T.connect.val?`meta ${METAS_T.connect.val}%`:"", cnE)}
+      ${row("Tx conv PgV-Checkout", m.txPagChk.toFixed(1)+"%", METAS_T.txPagChk.val?`meta ${fMetaPct(METAS_T.txPagChk.val)}`:"", pcE)}
+      ${row("Tx conv Checkout-Vendas", m.txChkVnd.toFixed(1)+"%", METAS_T.txChkVnd.val?`meta ${fMetaPct(METAS_T.txChkVnd.val)}`:"", cvE)}
+      ${row("Connect Rate", m.connect.toFixed(2)+"%", METAS_T.connect.val?`meta ${fMetaPct(METAS_T.connect.val)}`:"", cnE)}
       <div style="height:10px"></div>
       ${row("CPC", fBRL(m.cpc), METAS_T.cpc.val?`meta ${fBRL(METAS_T.cpc.val)}`:"", cpcE)}
-      ${row("CTR", m.ctr.toFixed(2)+"%", METAS_T.ctr.val?`meta ${METAS_T.ctr.val}%`:"", ctrE)}
+      ${row("CTR", m.ctr.toFixed(2)+"%", METAS_T.ctr.val?`meta ${fMetaPct(METAS_T.ctr.val)}`:"", ctrE)}
       ${row("CPM", fBRL(m.cpm), METAS_T.cpm.val?`meta ${fBRL(METAS_T.cpm.val)}`:"", cpmE)}
     </div>`;
   }
